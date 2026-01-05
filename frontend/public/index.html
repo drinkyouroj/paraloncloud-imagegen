@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="ParalonCloud Image Generation & Editing Tool" />
+    <title>ParalonCloud Image Tool</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script>
+      // Suppress browser extension errors that try to redefine window.ethereum
+      (function() {
+        const originalDefineProperty = Object.defineProperty;
+        Object.defineProperty = function(obj, prop, descriptor) {
+          if (prop === 'ethereum' && obj === window) {
+            try {
+              return originalDefineProperty.call(this, obj, prop, descriptor);
+            } catch (e) {
+              // Silently ignore if ethereum is already defined
+              if (e.message && e.message.includes('Cannot redefine property')) {
+                console.warn('Browser extension tried to redefine window.ethereum, ignoring...');
+                return obj;
+              }
+              throw e;
+            }
+          }
+          return originalDefineProperty.call(this, obj, prop, descriptor);
+        };
+      })();
+    </script>
+  </body>
+</html>
