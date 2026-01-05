@@ -4,12 +4,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import os
 import uuid
+import logging
+import traceback
 from typing import Optional
 import aiofiles
+import base64
 
 from app.config import Config
 from app.paralon_client import ParalonClient
 from app.image_processor import ImageProcessor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ParalonCloud Image Generation & Editing Tool")
 
@@ -26,14 +33,43 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory=Config.UPLOAD_DIR), name="uploads")
 app.mount("/generated", StaticFiles(directory=Config.GENERATED_DIR), name="generated")
 
-# Initialize clients
-paralon_client = ParalonClient()
-image_processor = ImageProcessor()
+# Initialize clients (with error handling)
+try:
+    paralon_client = ParalonClient()
+    image_processor = ImageProcessor()
+    logger.info("Clients initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize clients: {str(e)}")
+    logger.error(traceback.format_exc())
+    paralon_client = None
+    image_processor = None
 
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"status": "ok", "message": "ParalonCloud Image Generation & Editing Tool API"}
+    return {
+        "status": "ok", 
+        "message": "ParalonCloud Image Generation & Editing Tool API",
+        "client_initialized": paralon_client is not None,
+        "api_base": Config.PARALONCLOUD_API_BASE if paralon_client else None
+    }
+
+@app.get("/api/health")
+async def health_check():
+    """Detailed health check"""
+    health = {
+        "status": "ok",
+        "client_initialized": paralon_client is not None,
+        "api_key_set": bool(Config.PARALONCLOUD_API_KEY),
+        "api_base": Config.PARALONCLOUD_API_BASE,
+        "upload_dir_exists": os.path.exists(Config.UPLOAD_DIR),
+        "generated_dir_exists": os.path.exists(Config.GENERATED_DIR)
+    }
+    
+    if not health["api_key_set"]:
+        health["error"] = "PARALONCLOUD_API_KEY not found in .env file"
+    
+    return health
 
 @app.post("/api/generate")
 async def generate_image(
@@ -46,8 +82,12 @@ async def generate_image(
     """
     Generate an image from a text prompt
     """
+    if not paralon_client:
+        raise HTTPException(status_code=500, detail="ParalonCloud client not initialized. Check your API key in .env file.")
+    
     try:
-        image_urls = await paralon_client.generate_image(
+        logger.info(f"Generating image with prompt: {prompt[:50]}...")
+        image_data = await paralon_client.generate_image(
             prompt=prompt,
             model=model,
             size=size,
@@ -55,21 +95,51 @@ async def generate_image(
             n=n
         )
         
+        if not image_data:
+            raise HTTPException(status_code=500, detail="No images returned from API")
+        
         # Download and save images locally
         saved_paths = []
-        for i, url in enumerate(image_urls):
+        for i, img_data in enumerate(image_data):
             filename = f"{uuid.uuid4()}.png"
             save_path = os.path.join(Config.GENERATED_DIR, filename)
-            await image_processor.download_image(url, save_path)
+            
+            # Handle both URL strings and base64 encoded images
+            if isinstance(img_data, str):
+                if img_data.startswith('http://') or img_data.startswith('https://'):
+                    # It's a URL
+                    await image_processor.download_image(img_data, save_path)
+                else:
+                    # It's base64 encoded
+                    try:
+                        image_bytes = base64.b64decode(img_data)
+                        async with aiofiles.open(save_path, 'wb') as f:
+                            await f.write(image_bytes)
+                    except Exception as e:
+                        logger.error(f"Error decoding base64 image: {str(e)}")
+                        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+            else:
+                # Assume it's already bytes or a file-like object
+                async with aiofiles.open(save_path, 'wb') as f:
+                    if isinstance(img_data, bytes):
+                        await f.write(img_data)
+                    else:
+                        await f.write(str(img_data).encode())
+            
             saved_paths.append(f"/generated/{filename}")
         
+        logger.info(f"Successfully generated {len(saved_paths)} image(s)")
         return {
             "success": True,
             "images": saved_paths,
-            "urls": image_urls
+            "data": image_data[:1] if image_data else []  # Return first item for debugging
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error generating image: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error generating image: {str(e)}")
 
 @app.post("/api/edit")
 async def edit_image(

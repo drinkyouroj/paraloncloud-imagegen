@@ -1,5 +1,6 @@
 import os
 import httpx
+import aiofiles
 from PIL import Image
 import numpy as np
 from app.config import Config
@@ -10,15 +11,22 @@ class ImageProcessor:
     @staticmethod
     async def download_image(url: str, save_path: str) -> str:
         """Download an image from a URL and save it locally"""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        try:
+            # Ensure directory exists
+            dir_path = os.path.dirname(save_path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
             
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            with open(save_path, "wb") as f:
-                f.write(response.content)
-            
-            return save_path
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                
+                async with aiofiles.open(save_path, 'wb') as f:
+                    await f.write(response.content)
+                
+                return save_path
+        except Exception as e:
+            raise Exception(f"Failed to download image from {url}: {str(e)}")
     
     @staticmethod
     def apply_style_transfer(base_image_path: str, style_image_path: str, output_path: str, alpha: float = 0.5):

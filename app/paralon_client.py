@@ -40,9 +40,30 @@ class ParalonClient:
                     n=n
                 )
             )
-            return [image.url for image in response.data] if response.data and hasattr(response.data[0], 'url') else [img.b64_json for img in response.data] if response.data else []
+            
+            if not response or not response.data:
+                raise Exception("No data returned from API")
+            
+            # Extract image URLs or base64 data
+            results = []
+            for img in response.data:
+                if hasattr(img, 'url') and img.url:
+                    results.append(img.url)
+                elif hasattr(img, 'b64_json') and img.b64_json:
+                    results.append(img.b64_json)
+                else:
+                    # Try to get the image data directly
+                    results.append(str(img))
+            
+            return results if results else []
         except Exception as e:
-            raise Exception(f"Error generating image: {str(e)}")
+            error_msg = str(e)
+            if "401" in error_msg or "Unauthorized" in error_msg:
+                raise Exception(f"Authentication failed. Check your PARALONCLOUD_API_KEY in .env file. Error: {error_msg}")
+            elif "404" in error_msg or "Not Found" in error_msg:
+                raise Exception(f"API endpoint not found. Check PARALONCLOUD_API_BASE in .env file. Error: {error_msg}")
+            else:
+                raise Exception(f"Error generating image: {error_msg}")
     
     async def edit_image(self, image_path: str, prompt: str, mask_path: str = None, model: str = "dall-e-2", size: str = "1024x1024", n: int = 1):
         """
