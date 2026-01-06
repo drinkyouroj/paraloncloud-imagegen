@@ -71,6 +71,55 @@ async def health_check():
     
     return health
 
+@app.get("/api/test-endpoints")
+async def test_endpoints():
+    """Test which ParalonCloud endpoints are available"""
+    import httpx
+    
+    if not paralon_client:
+        raise HTTPException(status_code=500, detail="ParalonCloud client not initialized")
+    
+    base_url = Config.PARALONCLOUD_API_BASE.rstrip('/')
+    api_key = Config.PARALONCLOUD_API_KEY
+    
+    test_endpoints = [
+        "/images/generations",
+        "/inference/images/generations",
+        "/inference/generate",
+        "/generate",
+        "/chat/completions",  # This should work based on dashboard
+    ]
+    
+    results = {}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for endpoint_path in test_endpoints:
+            full_url = f"{base_url}{endpoint_path}"
+            try:
+                # Try a simple GET first
+                response = await client.get(full_url, headers=headers)
+                results[endpoint_path] = {
+                    "status": response.status_code,
+                    "method": "GET",
+                    "exists": response.status_code != 404
+                }
+            except Exception as e:
+                results[endpoint_path] = {
+                    "status": "error",
+                    "error": str(e),
+                    "exists": False
+                }
+    
+    return {
+        "base_url": base_url,
+        "tested_endpoints": results,
+        "note": "This tests endpoint existence. Actual usage may require POST with proper payload."
+    }
+
 @app.post("/api/generate")
 async def generate_image(
     prompt: str = Form(...),

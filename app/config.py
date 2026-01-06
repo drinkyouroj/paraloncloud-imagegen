@@ -5,7 +5,7 @@ load_dotenv()
 
 class Config:
     PARALONCLOUD_API_KEY = os.getenv("PARALONCLOUD_API_KEY")
-    PARALONCLOUD_API_BASE = os.getenv("PARALONCLOUD_API_BASE", "https://api.paraloncloud.com/v1")
+    PARALONCLOUD_API_BASE = os.getenv("PARALONCLOUD_API_BASE", "https://paraloncloud.com/v1")
     
     # File paths
     UPLOAD_DIR = "uploads"

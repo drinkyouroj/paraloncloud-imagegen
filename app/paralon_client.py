@@ -53,13 +53,15 @@ class ParalonClient:
     
     async def _generate_image_http(self, prompt: str, model: str, size: str, quality: str, n: int):
         """Generate image using direct HTTP calls"""
-        # Try different endpoint variations
+        # Try different endpoint variations for ParalonCloud
+        # Note: ParalonCloud may use different endpoints than standard OpenAI
         endpoints = [
-            f"{self.base_url}/images/generations",
-            f"{self.base_url}/v1/images/generations",
-            f"{self.base_url}/api/v1/images/generations",
-            f"{self.base_url}/generate",
-            f"{self.base_url}/v1/generate",
+            f"{self.base_url}/images/generations",  # Standard OpenAI format
+            f"{self.base_url}/inference/images/generations",  # ParalonCloud inference endpoint
+            f"{self.base_url}/inference/generate",  # Alternative inference format
+            f"{self.base_url}/generate",  # Simple format
+            f"{self.base_url}/v1/generate",  # Versioned simple format
+            f"{self.base_url}/api/v1/images/generations",  # API prefix format
         ]
         
         payload = {
@@ -123,8 +125,23 @@ class ParalonClient:
                     last_error = str(e)
                     continue
         
-        # If all endpoints failed
-        raise Exception(f"All endpoint variations failed. Last error: {last_error}. Please check PARALONCLOUD_API_BASE in .env file. Current base URL: {self.base_url}")
+        # If all endpoints failed, provide helpful error message
+        error_msg = (
+            f"Image generation endpoint not found. Tried endpoints:\n"
+            f"  - {self.base_url}/images/generations\n"
+            f"  - {self.base_url}/inference/images/generations\n"
+            f"  - {self.base_url}/inference/generate\n"
+            f"  - {self.base_url}/generate\n"
+            f"\n"
+            f"ParalonCloud may not support image generation through the OpenAI-compatible API, "
+            f"or may use a different endpoint structure.\n"
+            f"Please check ParalonCloud's documentation at https://paraloncloud.com/inference "
+            f"for the correct image generation endpoint.\n"
+            f"\n"
+            f"Current base URL: {self.base_url}\n"
+            f"Last error: {last_error or 'All endpoints returned 404'}"
+        )
+        raise Exception(error_msg)
     
     async def _generate_image_openai(self, prompt: str, model: str, size: str, quality: str, n: int):
         """Generate image using OpenAI client"""
